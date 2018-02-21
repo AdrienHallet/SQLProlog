@@ -108,8 +108,19 @@ insert(Table, Row) :-
     % Else
     writeln("FAIL").
 
-drop(Table).
+drop(Table) :-
+    tables(Table),
+    (
+        ->
+        retractall(row(Table,_)),
+        retract(table(Table,_,_))
+        ;
+        build_error_message(no_table,Table,Message),
+        !,throw(Message)
+    ).
 
 delete(Table).
+
+delete(Table,Conds).
 
 selec(TableOrTables, Selectors, Conds, Projection).
