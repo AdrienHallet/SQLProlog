@@ -17,11 +17,26 @@ tables :-
 tables(Tables) :- 
     findall(X, table(X,_,_), Tables).
 
-create(Table, Cols) :- 
-    length(Cols, Length),               % get the column count
-    assert(table(Table, Cols, Length)). % add the table, columns and column count
+create(Table, Cols) :- % Todo : check if two cols do not have the same name
+    tables(Tables),
+    ( 
+    member(Table, Tables) 
+        -> 
+        !, throw("Table already exists")
+        ;
+        length(Cols, Length),               
+        assert(table(Table, Cols, Length))
+    ).
 
-cols(Table, Cols).
+cols(Table, Cols) :-
+    tables(Tables),
+    ( 
+    member(Table, Tables) 
+        -> 
+        table(Table, Cols, _)
+        ;
+        !, throw("Specified Table does not Exist")
+    ).
 
 rows(Table).
 
