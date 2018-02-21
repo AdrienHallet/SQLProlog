@@ -7,14 +7,22 @@
  */
 build_error_message(Type, Var, Message) :-
     % The table does not exist
-    Type = no_table,
+    Type = no_table, !,
     string_concat("Table ", Var, Temp),
     string_concat(Temp, " does not exist", Message);
     
     % The table already exist
-    Type = already_exists,
+    Type = already_exists, !,
     string_concat("Table ", Var, Temp),
     string_concat(Temp, " already exists in database", Message);
+    
+    % Bad row insertion
+    Type = missing_columns, !,
+    (Found, Existing) = Var,
+    string_concat("Row conflict. You tried to insert ", Found, Temp),
+    string_concat(Temp, " while the table has ", Temp2),
+    string_concat(Temp2, Existing, Temp3),
+    string_concat(Temp3, " row(s)", Message);
     
     % The exception is unknown
     throw("Incexception : unexpected exception").
@@ -28,6 +36,10 @@ print_elems([]).
 print_elems([Head|Tail]) :- 
     writeln(Head), 
     print_elems(Tail).
+    
+assert_table_exists(Table) :-
+    tables(Tables),
+    member(Table, Tables).
 
 tables :- 
     findall(X, table(X,_,_), Tables), % find all tables
@@ -58,7 +70,7 @@ cols(Table, Cols) :-
         -> 
         table(Table, Cols, _)
         ;
-        !, 
+        !,
         build_error_message(no_table, Table, Message),
         throw(Message)
     ).
@@ -77,7 +89,24 @@ rows(Table) :-
         throw(Message)
     ).
 
-insert(Table, Row).
+insert(Table, Row) :-
+    % If table exists
+    assert_table_exists(Table), !,
+    table(Table, _, Length),
+    (Length = length(Row)
+        ->
+            writeln("Coucou")
+        ;
+        build_error_message(
+            missing_columns, 
+            (Length, length(Row)), 
+            Message)
+        
+    )
+    ;
+    
+    % Else
+    writeln("FAIL").
 
 drop(Table).
 
