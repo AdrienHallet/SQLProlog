@@ -30,13 +30,15 @@ print_elems([Head|Tail]) :-
     print_elems(Tail).
 
 tables :- 
-    findall(X, table(X,_,_), List), % find all tables
-    print_elems(List).               % display them
+    findall(X, table(X,_,_), Tables), % find all tables
+    print_elems(Tables).               % display them
 
 tables(Tables) :- 
     findall(X, table(X,_,_), Tables).
 
-create(Table, Cols) :- % Todo : check if two cols do not have the same name
+create(Table, Cols) :- 
+    % Todo : check if two cols do not have the same name
+    % Todo : check that Cols is not empty
     tables(Tables),
     ( 
     member(Table, Tables) 
@@ -61,7 +63,19 @@ cols(Table, Cols) :-
         throw(Message)
     ).
 
-rows(Table).
+rows(Table) :-
+    % Todo : error message if table empty    
+    tables(Tables),
+    ( 
+    member(Table, Tables) 
+        -> 
+        findall(X, row(Table, X), Rows),
+        print_elems(Rows)
+        ;
+        !, 
+        build_error_message(no_table, Table, Message),
+        throw(Message)
+    ).
 
 insert(Table, Row).
 
