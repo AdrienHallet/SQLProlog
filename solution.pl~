@@ -109,8 +109,8 @@ insert(Table, Row) :-
     writeln("FAIL").
 
 drop(Table) :-
+    member(Table, Tables),
     (
-        member(Table, Tables)
         ->
         retractall(row(Table,_)),
         retract(table(Table,_,_))
