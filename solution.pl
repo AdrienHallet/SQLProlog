@@ -9,20 +9,24 @@ build_error_message(Type, Var, Message) :-
     % The table does not exist
     Type = no_table, !,
     string_concat("Table ", Var, Temp),
-    string_concat(Temp, " does not exist", Message);
+    string_concat(Temp, " does not exist.", Message);
     
     % The table already exist
     Type = already_exists, !,
     string_concat("Table ", Var, Temp),
-    string_concat(Temp, " already exists in database", Message);
+    string_concat(Temp, " already exists in database.", Message);
+    
+    % The data is not a list
+    Type = not_a_list, !,
+    Message = "Not a valid input";
     
     % Bad row insertion
     Type = missing_columns, !,
     (Found, Existing) = Var,
     string_concat("Row conflict. You tried to insert ", Found, Temp),
-    string_concat(Temp, " while the table has ", Temp2),
+    string_concat(Temp, " rows while the table has ", Temp2),
     string_concat(Temp2, Existing, Temp3),
-    string_concat(Temp3, " row(s)", Message);
+    string_concat(Temp3, " row(s).", Message);
     
     % The exception is unknown
     throw("Incexception : unexpected exception").
@@ -90,23 +94,30 @@ rows(Table) :-
     ).
 
 insert(Table, Row) :-
+    % Check that we want to insert a list
+    not(is_list(Row)),
+    build_error_message(not_a_list, _, Message),
+    !, throw(Message);
+
     % If table exists
     assert_table_exists(Table), !,
     table(Table, _, Length),
-    (Length = length(Row)
+    length(Row, Found),
+    (Length = Found
         ->
-            writeln("Coucou")
+            assert(row(Table, Row))
         ;
         build_error_message(
             missing_columns, 
-            (Length, length(Row)), 
-            Message)
-        
+            (Length, Found), 
+            Message),
+        !, throw(Message)
     )
     ;
     
-    % Else
-    writeln("FAIL").
+    % Table does not exist
+    build_error_message(no_table, Table, Message),
+    throw(Message).
 
 drop(Table) :-
     (
