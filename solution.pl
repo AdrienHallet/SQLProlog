@@ -57,8 +57,8 @@ index_of([_|Tail], Column, Index) :-
   SubIndex is Index+1.
 
 replace(_, _, [], []).
-replace(O, R, [O|T], [R|T2]) :- replaceP(O, R, T, T2).
-replace(O, R, [H|T], [H|T2]) :- dif(H,O), replaceP(O, R, T, T2).
+replace(O, R, [O|T], [R|T2]) :- replace(O, R, T, T2).
+replace(O, R, [H|T], [H|T2]) :- dif(H,O), replace(O, R, T, T2).
 
 tables :-
     findall(X, table(X,_,_), Tables), % find all tables
@@ -171,7 +171,23 @@ handle_conds([H|T],ListofArgs) :-
     arg(2,H,V),
     handle_conds(T,[ListofArgs|V]).
 
-selec(TableOrTables, Selectors, Conds, Projection).
+selec(TableOrTables, Selectors, Conds, Projection) :-
+  Conds = [H|T],
+  selec_one(TableOrTables, Selectors, H, Projection).
+
+%Currently Working for only one table and condition, selector still useless
+selec_one(Table, Selectors, Conds, Projection) :-
+  table(Table, Columns, ColCount), %Get table info (for computation purposes)
+  row(Table, Row), %Get row
+  Conds=..CondList, %Transform the condition into a standard representation
+  replace(+X,Table/X,CondList,OrderList), %Convert the '+' notation to the standard table/column
+  OrderList = [Operator, Column, ExpectedValue],
+  nth0(ColumnIndex, Columns, Column),
+  nth0(ColumnIndex, Row, FoundValue),
+  Condition=..[Operator,FoundValue,ExpectedValue],
+  Condition,
+  Projection = Table/Row.
+
 
 
 % delete(table,conds) : chopper le nom de la table, le nom de la colonne et la valeur de la colonne.
