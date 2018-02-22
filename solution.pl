@@ -145,8 +145,34 @@ drop(Table) :-
         !,throw(Message)
     ).
 
-delete(Table).
+delete(Table) :-
+    (
+        member(Table,Tables)
+        ->
+        retractall(row(Table,_))
+        ;
+        build_error_message(no_table,Table,Message),
+        !,throw(Message)
+    ).
 
-delete(Table,Conds).
+delete(Table,Conds) :-
+    (
+        member(Table,Tables)
+        ->
+        handle_conds(Conds,ListofArgs),
+        retract(row(Table,ListofArgs))
+        ;
+        build_error_message(no_table,Table,Message),
+        !,throw(Message)
+    ).
+
+handle_conds([],ListofArgs).
+handle_conds([H|T],ListofArgs) :-
+    arg(2,H,V),
+    handle_conds(T,[ListofArgs|V]).
 
 selec(TableOrTables, Selectors, Conds, Projection).
+
+
+% delete(table,conds) : chopper le nom de la table, le nom de la colonne et la valeur de la colonne.
+% Ensuite, maplist(maplist(retract),[[Liste_des_valeurs],row(Table,_)], NewList)
