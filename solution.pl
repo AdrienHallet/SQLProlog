@@ -221,8 +221,18 @@ selec(TableOrTables, Selectors, Conds, Projection) :-
 
 %Currently Working for only one table and condition, selector still useless
 selec_one(Table, Selectors, Conds, Projection) :-
-  table(Table, Columns, ColCount), %Get table info (for computation purposes)
-  row(Table, Row), %Get row
+  (
+    Table = [H|T]
+    ->
+      maplist(table_columns, Table, TempColumns),
+      flatten(TempColumns,Columns),
+      maplist(row, [persons,cities],TempRow),
+      flatten(TempRow, Row)
+    ;
+      table(Table, Columns,_),
+      row(Table, Row)
+  ),
+  %row(Table, Row), %Get row
 
   condition_loop(Conds, Columns, Row),
   (is_list(Selectors)
@@ -243,15 +253,16 @@ condition_loop([H|T], Columns, Row) :-
   OrderList = [Operator, Column, ExpectedValue],
   nth0(ColumnIndex, Columns, Column),
   nth0(ColumnIndex, Row, FoundValue),
-  Condition=..[Operator,FoundValue,ExpectedValue],
-  Condition,
+  (_/_ = ExpectedValue
+    ->
+      nth0(SecondColumnIndex, Columns, ExpectedValue),
+      nth0(SecondColumnIndex, Row, SecondFoundValue),
+      Condition=..[Operator,FoundValue,SecondFoundValue]
+    ;
+      Condition=..[Operator,FoundValue,ExpectedValue]
+  ),
+  !,Condition,
   condition_loop(T, Columns, Row).
-
-
-
-selec_whole_table(Table, Selection) :-
-  row(Table, Row),
-  Selection = Table/Row.
 
 selector([],_,_,Builder, Projection) :-
   Builder = Projection.
