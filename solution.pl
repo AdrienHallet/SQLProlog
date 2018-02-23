@@ -298,7 +298,7 @@ selec_worker(Table, Selectors, Conds, Projection) :-
     -> % Multi-tables selection
       maplist(cols, Table, TempColumns),
       flatten(TempColumns,Columns),           % Get all viewed columns
-      maplist(row, [persons,cities],TempRow), % X-join the tables
+      maplist(row, Table,TempRow), % X-join the tables
       flatten(TempRow, Row)                   % Get the rows
     ; % Single-table selection
       table(Table, RawColumns,_),
