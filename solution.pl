@@ -171,24 +171,93 @@ handle_conds([H|T],ListofArgs) :-
     arg(2,H,V),
     handle_conds(T,[ListofArgs|V]).
 
+replace_plus(TableName, ToRemove, Removed) :-
+
+  (ToRemove = +X
+  ->
+  Removed = TableName/X
+  ;
+  ToRemove = Removed
+  ).
+
+table_columns(Table, Columns) :-
+  table(Table, Columns,_).
+
+parse_selectors(TableOrTables, Selectors, ParsedSelectors) :-
+  (
+    TableOrTables = [Htable|Ttable]
+    ->
+      (
+        Selectors = [Hsel,Tpoivre]
+        ->
+          maplist(replace_plus(Htable), Selectors, ParsedSelectors)
+        ;
+          (
+            Selectors = +X
+            ->
+              ParsedSelectors = HTable/X
+            ;
+              writeln("*"),
+              maplist(table_columns, TableOrTables, TempSelectors),
+              flatten(TempSelectors, ParsedSelectors)
+          )
+      )
+    ;
+      maplist(replace_plus(Htable), Selectors, ParsedSelectors)
+  ).
+
 selec(TableOrTables, Selectors, Conds, Projection) :-
+  parse_selectors(TableOrTables, Selectors, ParsedSelectors),
   Conds = [H|T],
-  selec_one(TableOrTables, Selectors, H, Projection).
+  %!, selec_one(TableOrTables, Selectors, H, Projection);
+  !, selec_one(TableOrTables, ParsedSelectors, Conds, Projection);
+  !, selec_whole_table(TableOrTables, Projection). %Todo Remove
 
 %Currently Working for only one table and condition, selector still useless
 selec_one(Table, Selectors, Conds, Projection) :-
   table(Table, Columns, ColCount), %Get table info (for computation purposes)
   row(Table, Row), %Get row
-  Conds=..CondList, %Transform the condition into a standard representation
+
+  condition_loop(Conds, Columns, Row),
+  (is_list(Selectors)
+  ->
+    selector(Columns, Selectors, Row, [], Selection),
+    Projection = Table/Selection
+  ;
+    Projection = Table/Row
+  ).
+
+condition_loop([], _, _).
+condition_loop([H|T], Columns, Row) :-
+  (First, Remain) = H,
+  condition_loop([First,Remain], Columns, Row);
+
+  H=..CondList, %Transform the condition into a standard representation
   replace(+X,Table/X,CondList,OrderList), %Convert the '+' notation to the standard table/column
   OrderList = [Operator, Column, ExpectedValue],
   nth0(ColumnIndex, Columns, Column),
   nth0(ColumnIndex, Row, FoundValue),
   Condition=..[Operator,FoundValue,ExpectedValue],
   Condition,
-  Projection = Table/Row.
+  condition_loop(T, Columns, Row).
 
 
+
+selec_whole_table(Table, Selection) :-
+  row(Table, Row),
+  Selection = Table/Row.
+
+selector([],_,_,Builder, Projection) :-
+  Builder = Projection.
+selector([CurCol|RemCol], ColumnsKept, [CurRow|RemRow], Builder, Projection) :-
+  (
+    member(CurCol, ColumnsKept)
+    ->
+      append([CurRow], Builder, ExpandedBuilder),
+      selector(RemCol, ColumnsKept, RemRow, ExpandedBuilder, Projection)
+    ;
+      selector(RemCol, ColumnsKept, RemRow, Builder, Projection)
+  ).
 
 % delete(table,conds) : chopper le nom de la table, le nom de la colonne et la valeur de la colonne.
 % Ensuite, maplist(maplist(retract),[[Liste_des_valeurs],row(Table,_)], NewList)
