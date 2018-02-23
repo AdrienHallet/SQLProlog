@@ -67,6 +67,15 @@ tables :-
 tables(Tables) :-
     findall(X, table(X,_,_), Tables).
 
+assert_full_col_name(Table, Col, VerifiedCol) :-
+  (
+    X/Y = Col
+    ->
+      VerifiedCol = Col
+    ;
+      VerifiedCol = Table/Col
+  ).
+
 create(Table, Cols) :-
     % Todo : check if two cols do not have the same name
     % Todo : check that Cols is not empty
@@ -183,6 +192,7 @@ replace_plus(TableName, ToRemove, Removed) :-
 table_columns(Table, Columns) :-
   table(Table, Columns,_).
 
+/* Old version not accomodating un-tabled column names
 parse_selectors(TableOrTables, Selectors, ParsedSelectors) :-
   (
     TableOrTables = [Htable|Ttable]
@@ -210,7 +220,27 @@ parse_selectors(TableOrTables, Selectors, ParsedSelectors) :-
           table_columns(TableOrTables, ParsedSelectors)
       )
 
+  ).*/
+parse_selectors([],Selectors, ParsedSelectors) :-
+  !,flatten(Selectors, ParsedSelectors).
+parse_selectors([Htable|Ttable], [], ParsedSelectors).
+parse_selectors([Htable|Ttable], Selectors, ParsedSelectors) :-
+    Selectors = +X,
+    ParsedSelectors = HTable/X.
+
+parse_selectors([Htable|Ttable], [HSelector|TSelector], ParsedSelectors) :-
+  maplist(replace_plus(Htable), [HSelector,TSelector], RawParsedSelectors),
+  !,flatten(RawParsedSelectors,ParsedSelectors).
+parse_selectors(Table, Selectors, ParsedSelectors) :-
+  (
+    is_list(Selectors)
+    ->
+      maplist(replace_plus(Table), Selectors, ParsedSelectors)
+    ;
+      table_columns(Table, RawParsedSelectors),
+      maplist(assert_full_col_name(Table), RawParsedSelectors, ParsedSelectors)
   ).
+
 
 selec(TableOrTables, Selectors, Conds, Projection) :-
   parse_selectors(TableOrTables, Selectors, ParsedSelectors),
@@ -229,7 +259,8 @@ selec_one(Table, Selectors, Conds, Projection) :-
       maplist(row, [persons,cities],TempRow),
       flatten(TempRow, Row)
     ;
-      table(Table, Columns,_),
+      table(Table, RawColumns,_),
+      maplist(assert_full_col_name(Table),RawColumns,Columns),
       row(Table, Row)
   ),
   %row(Table, Row), %Get row
@@ -238,9 +269,9 @@ selec_one(Table, Selectors, Conds, Projection) :-
   (is_list(Selectors)
   ->
     selector(Columns, Selectors, Row, [], Selection),
-    Projection = Table/Selection
+    Projection = Selectors/Selection
   ;
-    Projection = Table/Row
+    Projection = Selectors/Row
   ).
 
 condition_loop([], _, _).
