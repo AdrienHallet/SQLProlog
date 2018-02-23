@@ -81,7 +81,7 @@ tables(Tables) :-
 /* assert_full_col_name(+Table, +Col, -VerifiedCol)
  * Ensures that @VerifiedCol contains the full selector name
  * of @Col inside @Table
- */
+ *
 assert_full_col_name(Table, Col, VerifiedCol) :-
   (
     _/_ = Col
@@ -89,6 +89,26 @@ assert_full_col_name(Table, Col, VerifiedCol) :-
       VerifiedCol = Col         % We already had the full name
     ;
       VerifiedCol = Table/Col   % Get the full name
+  ).
+*/
+
+/* assert_full_col_name(+Table, +Col, -VerifiedCol)
+ * Ensures that @VerifiedCol contains the full selector name
+ * of @Col inside @Table
+ */
+assert_full_col_name(Table, Col, FullCol) :-
+
+  (Col = +X
+  ->
+  FullCol = Table/X
+  ;
+      (
+        Col = _/_
+        ->
+          FullCol = Col         % We already had the full name
+        ;
+          FullCol = Table/Col   % Get the full name
+      )
   ).
 
 /* create(+Table, +Cols)
@@ -146,7 +166,7 @@ rows(Table) :-
  */
 insert(Table, Row) :-
     % Check that we want to insert a list
-    not(is_list(Row)),
+    \+(is_list(Row)),
     build_error_message(not_a_list, _, Message),
     !, throw(Message);
 
@@ -218,18 +238,6 @@ handle_conds([H|T],ListofArgs) :-
     arg(2,H,V),
     handle_conds(T,[ListofArgs|V]).
 
-/* replace_plus(+TableName, +ToRemove, -Removed) %Todo: check duplicate with assert_...
- *
- */
-replace_plus(TableName, ToRemove, Removed) :-
-
-  (ToRemove = +X
-  ->
-  Removed = TableName/X
-  ;
-  ToRemove = Removed
-  ).
-
 /* parse_selectors(+Table(s),+Selector(s), -ParsedSelectors) 
  * @Table(s)       : can be list of tables or single table
  * @Selector(s)    : can be one or multiple selectors (also *)
@@ -247,20 +255,20 @@ parse_selectors([],Selectors, ParsedSelectors) :-
 parse_selectors([_|_], [], _).
   % We emptied the table and selector lists
   
-parse_selectors([_|_], Selectors, ParsedSelectors) :- %Todo check weirdness
+/*parse_selectors([_|_], Selectors, ParsedSelectors) :- %Todo check weirdness
     Selectors = +X,
-    ParsedSelectors = _/X.
+    ParsedSelectors = _/X.*/
 
 parse_selectors([Htable|_], [HSelector|TSelector], ParsedSelectors) :-
-  maplist(replace_plus(Htable), [HSelector,TSelector], RawParsedSelectors),
+  maplist(assert_full_col_name(Htable), [HSelector|TSelector], RawParsedSelectors),
   !,flatten(RawParsedSelectors,ParsedSelectors).
   
 parse_selectors(Table, Selectors, ParsedSelectors) :-
   (
     is_list(Selectors)
-    ->
-      maplist(replace_plus(Table), Selectors, ParsedSelectors)
-    ;
+    -> % Selection
+      maplist(assert_full_col_name(Table), Selectors, ParsedSelectors)
+    ;  % All columns (*)
       cols(Table, RawParsedSelectors),
       maplist(assert_full_col_name(Table), RawParsedSelectors, ParsedSelectors)
   ).
@@ -289,54 +297,89 @@ selec_worker(Table, Selectors, Conds, Projection) :-
     Table = [_|_]
     -> % Multi-tables selection
       maplist(cols, Table, TempColumns),
-      flatten(TempColumns,Columns),           %Get all viewed columns
-      maplist(row, [persons,cities],TempRow), %X-join the tables
-      flatten(TempRow, Row)                   %Get the rows
+      flatten(TempColumns,Columns),           % Get all viewed columns
+      maplist(row, [persons,cities],TempRow), % X-join the tables
+      flatten(TempRow, Row)                   % Get the rows
     ; % Single-table selection
       table(Table, RawColumns,_),
       maplist(assert_full_col_name(Table),RawColumns,Columns),
       row(Table, Row)
   ),
 
-  condition_loop(Conds, Columns, Row),
+  condition_loop(Conds, Columns, Row),        % Only keep SAT(row, Conds)
   (is_list(Selectors)
-  ->
+  -> % refined selection
     selector(Columns, Selectors, Row, [], Selection),
     Projection = Selectors/Selection
-  ;
+  ;  % get-all (*) selection
     Projection = Selectors/Row
   ).
 
-condition_loop([], _, _).
+
+/* condition_loop(+Conditions, +Columns, +Row)
+ * @Conditions : List of conditions to apply on selection
+ * @Columns    : All the columns of the selected tables
+ * @Row        : The row the condition is getting checked on
+ *
+ * Receiving a list of @Conditions over some or all of @Columns,
+ * is true iif every condition is verified over @Row.
+ *
+ * Technical add-on :
+ * The condition_loop loops over every handed condition, binding
+ * the values found on desired column and comparing it to the
+ * expected value according to the given operator.
+ *
+ * There is a special case when we give two columns (e.g. to join on
+ * a multi-table selection), the compared columns are both evaluated
+ * on their value found on Row (where the classis condition keeps a
+ * constant for the comparison).
+ */
+condition_loop([], _, _).   % base case
 condition_loop([H|T], Columns, Row) :-
   (First, Remain) = H,
   condition_loop([First,Remain], Columns, Row);
 
-  H=..CondList, %Transform the condition into a standard representation
-  replace(+X,_/X,CondList,OrderList), %Convert the '+' notation to the standard table/column
+  H=..CondList, % Transform the condition into a uniform representation
+  replace(+X,_/X,CondList,OrderList), % Convert the '+' notation to the standard table/column
   OrderList = [Operator, Column, ExpectedValue],
-  nth0(ColumnIndex, Columns, Column),
-  nth0(ColumnIndex, Row, FoundValue),
+  nth0(ColumnIndex, Columns, Column), % Get the index of Column in Columns
+  nth0(ColumnIndex, Row, FoundValue), % Get the value found at index on Row
   (_/_ = ExpectedValue
-    ->
+    -> % condition of type column1 = column2
+      % Get index of ExpectedValue in Columns
       nth0(SecondColumnIndex, Columns, ExpectedValue),
+      % Get value found at index on Row
       nth0(SecondColumnIndex, Row, SecondFoundValue),
+      % Express the condition on comparable values
       Condition=..[Operator,FoundValue,SecondFoundValue]
-    ;
+    ; % condition of type column = value
       Condition=..[Operator,FoundValue,ExpectedValue]
   ),
-  !,Condition,
-  condition_loop(T, Columns, Row).
+  !,Condition, % Check the condition
+  condition_loop(T, Columns, Row). % Condition is valid, goto next condition
 
-selector([],_,_,Builder, Projection) :-
+/* selector(+Columns, +ColumnsKept, +Row, -Builder, -Projection)
+ * @Columns     : The full names of the columns in a Row (<table>/<column>)
+ * @ColumnsKept : The full names of the columns we want to keep (<table>/<column>))
+ * @Row         : The Row on which to filter Columns
+ * @Builder     : An accumulator to build the projection
+ * @Projection  : Resulting projection of the selection on Row
+ *
+ * condition : order(Columns) = order(Row).
+ * -> we consider that the order of the columns in Columns is the same as in Row
+ *
+ * Binds a new row to Projection, built from Row where every unwanted column has
+ * been filtered out.
+ */
+selector([],_,_,Builder, Projection) :-  % base case, we consumed every selector
   Builder = Projection.
 selector([CurCol|RemCol], ColumnsKept, [CurRow|RemRow], Builder, Projection) :-
   (
     member(CurCol, ColumnsKept)
-    ->
+    -> % we want to keep this column
       append(Builder, [CurRow], ExpandedBuilder),
       selector(RemCol, ColumnsKept, RemRow, ExpandedBuilder, Projection)
-    ;
+    ;  % we don't want this column
       selector(RemCol, ColumnsKept, RemRow, Builder, Projection)
   ).
 
