@@ -197,21 +197,27 @@ parse_selectors(TableOrTables, Selectors, ParsedSelectors) :-
             ->
               ParsedSelectors = HTable/X
             ;
-              writeln("*"),
               maplist(table_columns, TableOrTables, TempSelectors),
               flatten(TempSelectors, ParsedSelectors)
           )
       )
     ;
-      maplist(replace_plus(Htable), Selectors, ParsedSelectors)
+      (
+        is_list(Selectors)
+        ->
+          maplist(replace_plus(TableOrTables), Selectors, ParsedSelectors)
+        ;
+          table_columns(TableOrTables, ParsedSelectors)
+      )
+
   ).
 
 selec(TableOrTables, Selectors, Conds, Projection) :-
   parse_selectors(TableOrTables, Selectors, ParsedSelectors),
-  Conds = [H|T],
+  %Conds = [H|T],
   %!, selec_one(TableOrTables, Selectors, H, Projection);
-  !, selec_one(TableOrTables, ParsedSelectors, Conds, Projection);
-  !, selec_whole_table(TableOrTables, Projection). %Todo Remove
+  !, selec_one(TableOrTables, ParsedSelectors, Conds, Projection).
+  %!, selec_whole_table(TableOrTables, Projection). %Todo Remove
 
 %Currently Working for only one table and condition, selector still useless
 selec_one(Table, Selectors, Conds, Projection) :-
@@ -253,7 +259,7 @@ selector([CurCol|RemCol], ColumnsKept, [CurRow|RemRow], Builder, Projection) :-
   (
     member(CurCol, ColumnsKept)
     ->
-      append([CurRow], Builder, ExpandedBuilder),
+      append(Builder, [CurRow], ExpandedBuilder),
       selector(RemCol, ColumnsKept, RemRow, ExpandedBuilder, Projection)
     ;
       selector(RemCol, ColumnsKept, RemRow, Builder, Projection)
