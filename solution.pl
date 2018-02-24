@@ -176,7 +176,7 @@ insert(Table, Row) :-
  */
 drop(Table) :-
     (
-        member(Table, _)
+        member(Table,_)
         ->
         retractall(row(Table,_)),
         retract(table(Table,_,_))
@@ -203,20 +203,30 @@ delete(Table,Conds) :-
     (
         member(Table,_)
         ->
-        handle_conds(Conds,ListofArgs),
-        retract(row(Table,ListofArgs))
+        maplist(arg(1),Conds,Cols),
+        maplist(arg(2),Conds,Vals),
+        build_conditions_for_selec(Cols,Vals,=,CondsSelec),
+        selec(Table, Cols, CondsSelec, ResOfSelec),
+        retractall(row(Table,ResOfSelec))
         ;
         build_error_message(no_table,Table,Message),
         !,throw(Message)
     ).
 
-/* handle_conds(+Conds, -ListofArgs)
- *
+/*
+ * I can't be more explicit with this one's name. 
+ * It transforms +Terms of delete in +Terms of selec
+ * For example : [+bar=1] becomes [=(+bar, 1)]
  */
-handle_conds([],_).
-handle_conds([H|T],ListofArgs) :-
-    arg(2,H,V),
-    handle_conds(T,[ListofArgs|V]).
+build_conditions_for_selec([],[],[],CondsSelec) :- 
+    print(CondsSelec).
+build_conditions_for_selec([HCols|TCols],[HVals|TVals],Op,CondsSelec) :-
+  (
+    L = [Op|[HCols|[HVals]]],
+    Term =..[L],
+    append(CondsSelec,[Term],ExpandedCondsSelec),
+    build_conditions_for_selec(TCols,TVals,Op,ExpandedCondsSelec) 
+  ).
 
 /* replace_plus(+TableName, +ToRemove, -Removed) %Todo: check duplicate with assert_...
  *
@@ -340,5 +350,6 @@ selector([CurCol|RemCol], ColumnsKept, [CurRow|RemRow], Builder, Projection) :-
       selector(RemCol, ColumnsKept, RemRow, Builder, Projection)
   ).
 
-% delete(table,conds) : chopper le nom de la table, le nom de la colonne et la valeur de la colonne.
-% Ensuite, maplist(maplist(retract),[[Liste_des_valeurs],row(Table,_)], NewList)
+
+
+
