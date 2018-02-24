@@ -195,8 +195,9 @@ insert(Table, Row) :-
  *
  */
 drop(Table) :-
+    tables(Tables),
     (
-        member(Table,_)
+        member(Table,Tables)
         ->
         retractall(row(Table,_)),
         retract(table(Table,_,_))
@@ -208,8 +209,9 @@ drop(Table) :-
  *
  */
 delete(Table) :-
+    tables(Tables),
     (
-        member(Table,_)
+        member(Table,Tables)
         ->
         retractall(row(Table,_))
         ;
@@ -220,33 +222,17 @@ delete(Table) :-
  *
  */
 delete(Table,Conds) :-
+    tables(Tables),
     (
-        member(Table,_)
+        member(Table,Tables)
         ->
-        maplist(arg(1),Conds,Cols),
-        maplist(arg(2),Conds,Vals),
-        build_conditions_for_selec(Cols,Vals,=,CondsSelec),
-        selec(Table, Cols, CondsSelec, ResOfSelec),
-        retractall(row(Table,ResOfSelec))
+        selec(Table, *, Conds, ResOfSelec),
+        arg(2,ResOfSelec,Val),
+        !,retractall(row(Table,Val))
         ;
         build_error_message(no_table,Table,Message),
         !,throw(Message)
     ).
-
-/*
- * I can't be more explicit with this one's name. 
- * It transforms +Terms of delete in +Terms of selec
- * For example : [+bar=1] becomes [=(+bar, 1)]
- */
-build_conditions_for_selec([],[],[],CondsSelec) :- 
-    print(CondsSelec).
-build_conditions_for_selec([HCols|TCols],[HVals|TVals],Op,CondsSelec) :-
-  (
-    L = [Op|[HCols|[HVals]]],
-    Term =..[L],
-    append(CondsSelec,[Term],ExpandedCondsSelec),
-    build_conditions_for_selec(TCols,TVals,Op,ExpandedCondsSelec) 
-  ).
 
 /* parse_selectors(+Table(s),+Selector(s), -ParsedSelectors) 
  * @Table(s)       : can be list of tables or single table
