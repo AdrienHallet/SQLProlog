@@ -1,3 +1,9 @@
+/* LSINF2335 - Project 1
+ * Group 4 :
+ *  - HALLET, Adrien
+ *  - RUCQUOY, Alexandre
+ */
+
 :- dynamic table/3.
 :- dynamic row/2.
 
@@ -421,7 +427,3 @@ selector([CurCol|RemCol], ColumnsKept, [CurRow|RemRow], Builder, Projection) :-
     ;  % we don't want this column
       selector(RemCol, ColumnsKept, RemRow, Builder, Projection)
   ).
-
-
-
-
