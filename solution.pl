@@ -1,3 +1,6 @@
+:- dynamic table/3.
+:- dynamic row/2.
+
 /* build_error_message(+Type, +Var, -Message)
  * Constructs an error message of the given @Type
  * With the possible help of the information @Var
@@ -234,6 +237,19 @@ delete(Table,Conds) :-
         !,throw(Message)
     ).
 
+get_full_cols([Table], RawColumns, Columns) :-
+  cols(Table, CurColList),
+  append(RawColumns, CurColList, Result),
+  flatten(Result, Columns).
+  
+get_full_cols([HTable|TTable], RawColumns, Columns) :-
+  cols(HTable, CurColList),
+  append(RawColumns, CurColList, NewRawColumns),
+  !,get_full_cols(TTable, NewRawColumns, Columns).
+  
+
+
+
 /* parse_selectors(+Table(s),+Selector(s), -ParsedSelectors) 
  * @Table(s)       : can be list of tables or single table
  * @Selector(s)    : can be one or multiple selectors (also *)
@@ -244,21 +260,25 @@ delete(Table,Conds) :-
  * @ParsedSelectors will then contain the full, standardized selectors
  * to be used inside the selec predicate.
  */
+% Base case (consumed everything)
 parse_selectors([],Selectors, ParsedSelectors) :-
   % We emptied the table list and we flatten it 
   !,flatten(Selectors, ParsedSelectors).
-  
-parse_selectors([_|_], [], _).
-  % We emptied the table and selector lists
-  
-/*parse_selectors([_|_], Selectors, ParsedSelectors) :- %Todo check weirdness
-    Selectors = +X,
-    ParsedSelectors = _/X.*/
 
+% Absorb case
+parse_selectors([_|_], [], _).
+
+%Working case, end of table list and multiselect
 parse_selectors([Htable|_], [HSelector|TSelector], ParsedSelectors) :-
   maplist(assert_full_col_name(Htable), [HSelector|TSelector], RawParsedSelectors),
   !,flatten(RawParsedSelectors,ParsedSelectors).
   
+%Working case, table list and single select (star)
+parse_selectors(Table, _, ParsedSelectors) :-
+  is_list(Table),  
+  !,get_full_cols(Table, _, ParsedSelectors).
+
+%Working broad case
 parse_selectors(Table, Selectors, ParsedSelectors) :-
   (
     is_list(Selectors)
@@ -266,6 +286,7 @@ parse_selectors(Table, Selectors, ParsedSelectors) :-
       maplist(assert_full_col_name(Table), Selectors, ParsedSelectors)
     ;  % All columns (*)
       cols(Table, RawParsedSelectors),
+      %cols(Table, RawParsedSelectors),
       maplist(assert_full_col_name(Table), RawParsedSelectors, ParsedSelectors)
   ).
 
@@ -276,7 +297,7 @@ parse_selectors(Table, Selectors, ParsedSelectors) :-
  * @Projection      : The results of the selection
  */
 selec(TableOrTables, Selectors, Conds, Projection) :-
-  parse_selectors(TableOrTables, Selectors, ParsedSelectors),
+  !, parse_selectors(TableOrTables, Selectors, ParsedSelectors),
   !, selec_worker(TableOrTables, ParsedSelectors, Conds, Projection).
 
 /* selec_worker(+Table(s), +Selector(s), +Cond(s), -Projection)
