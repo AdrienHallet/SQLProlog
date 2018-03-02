@@ -384,25 +384,67 @@ condition_loop([H|T], Columns, Row) :-
   (First, Remain) = H,
   condition_loop([First,Remain], Columns, Row);
 
-  H=..CondList, % Transform the condition into a uniform representation
-  replace(+X,_/X,CondList,OrderList), % Convert the '+' notation to the standard table/column
-  OrderList = [Operator, Column, ExpectedValue],
-  nth0(ColumnIndex, Columns, Column), % Get the index of Column in Columns
-  nth0(ColumnIndex, Row, FoundValue), % Get the value found at index on Row
-  (_/_ = ExpectedValue
-    -> % condition of type column1 = column2
-      % Get index of ExpectedValue in Columns
-      nth0(SecondColumnIndex, Columns, ExpectedValue),
-      % Get value found at index on Row
-      nth0(SecondColumnIndex, Row, SecondFoundValue),
-      % Express the condition on comparable values
-      Condition=..[Operator,FoundValue,SecondFoundValue]
-    ; % condition of type column = value
-      Condition=..[Operator,FoundValue,ExpectedValue]
-  ),
-  !,Condition, % Check the condition
+  %H=..CondList, % Transform the condition into a uniform representation
+  build_tree(H, Columns, Row, Tree),
+  evaluate_tree(Tree,[], Condition),
+  FunCondition=..Condition,
+  !,FunCondition,
+  %!,Condition, % Check the condition
   condition_loop(T, Columns, Row). % Condition is valid, goto next condition
 
+build_tree(FullCond, Columns, Row, Tree) :-
+  FullCond=..CondList,
+  get_atomic(CondList, [], R),
+  replace_by_atom(R, Columns, Row, [], Tree).
+
+evaluate_tree(ToEval, Stock, FinalCondition) :-
+  length(ToEval, 3),
+  (length(Stock,0)
+  -> ToEval = FinalCondition
+  ;
+  !, Condition=..ToEval,
+  !, append(Stock, [Condition], NewTree),
+  !, evaluate_tree(NewTree, [], FinalCondition)
+  );
+  
+  length(ToEval, N),
+  !,N > 2,
+  !,ToEval=[H|T],
+  !,append(Stock, [H], NewStock),
+  !,evaluate_tree(T, NewStock, FinalCondition).
+    
+replace_by_atom([], _, _, Builder, Replaced):-
+  Replaced = Builder.
+replace_by_atom([H|T], Columns, Row, Builder, Replaced):-
+  atomic(H),
+  !, append(Builder, [H], Result),
+  !, replace_by_atom(T, Columns, Row, Result, Replaced);
+  
+  !, nth0(ColumnIndex, Columns, H),
+  !, nth0(ColumnIndex, Row, Atom),
+  !, append(Builder, [Atom], Result),
+  !, replace_by_atom(T, Columns, Row, Result, Replaced).
+  
+/* get_atomic(+RawList, [], -Atomized)
+ * 
+ * 
+ *
+ */
+get_atomic([], Builder, Atomized):-
+    Atomized = Builder.
+get_atomic([H|T], Builder, Atomized) :-
+  (atomic(H);H= +X;H=_/_),
+  (H = +X
+    -> Add=_/X
+    ; Add=H
+  ),
+  !, append(Builder, [Add], Result),
+  !,get_atomic(T, Result, Atomized);
+  
+  !, 
+  H=..Functor,
+  !, get_atomic(Functor, Builder, Atomized).
+  
 /* selector(+Columns, +ColumnsKept, +Row, -Builder, -Projection)
  * @Columns     : The full names of the columns in a Row (<table>/<column>)
  * @ColumnsKept : The full names of the columns we want to keep (<table>/<column>))
