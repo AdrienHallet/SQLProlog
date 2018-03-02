@@ -28,6 +28,14 @@ build_error_message(Type, Var, Message) :-
     string_concat(Temp, " rows while the table has ", Temp2),
     string_concat(Temp2, Existing, Temp3),
     string_concat(Temp3, " row(s).", Message);
+    
+    % Trying to create table without columns
+    Type = empty_cols, !,
+    string_concat("You are trying to create the table ", Var, Temp),
+    string_concat(Temp, " without any column ... And you cannot do that.", Message);
+    
+    Type = duplicate_column, !,
+    Message = "Columns names must be unique";
 
     % The exception is unknown
     throw("Incexception : unexpected exception").
@@ -67,6 +75,16 @@ replace(Old, New, [Old|T1], [New|T2]) :-    % Head of list is value
 replace(Old, New, [H|T1], [H|T2]) :-        % Pursue the search
     dif(H,Old),                             % Head is not the value
     replace(Old, New, T1, T2).
+    
+/* is_set(+Lst)
+ *
+ * True if @Lst has no duplicates,
+ * False otherwise
+ */
+is_set(Lst) :-
+    setof(X, member(X, Lst), Set),
+    length(Lst, N),
+    length(Set, N).
 
 /* tables
  * List the tables on prompt
@@ -118,8 +136,15 @@ assert_full_col_name(Table, Col, FullCol) :-
  * Adds the @Table with columns @Cols to the database
  */
 create(Table, Cols) :-
-    % Todo : check if two cols do not have the same name
-    % Todo : check that Cols is not empty
+    length(Cols, Length),
+    Length =< 0,
+    !, build_error_message(empty_cols, Table, Message),
+    throw(Message);
+    
+    not(is_set(Cols)),
+    !, build_error_message(duplicate_column, Table, Message),
+    throw(Message);
+    
     tables(Tables),
     (
     member(Table, Tables)
@@ -151,7 +176,6 @@ cols(Table, Cols) :-
  * List the rows of @table in prompt
  */
 rows(Table) :-
-    % Todo : error message if table empty
     tables(Tables),
     (
     member(Table, Tables)
@@ -237,6 +261,10 @@ delete(Table,Conds) :-
         !,throw(Message)
     ).
 
+/* get_full_cols(+Tables, -RawColumns, -Columns)
+ *
+ * Write all @Tables columns in @Columns
+ */
 get_full_cols([Table], RawColumns, Columns) :-
   cols(Table, CurColList),
   append(RawColumns, CurColList, Result),
@@ -246,9 +274,6 @@ get_full_cols([HTable|TTable], RawColumns, Columns) :-
   cols(HTable, CurColList),
   append(RawColumns, CurColList, NewRawColumns),
   !,get_full_cols(TTable, NewRawColumns, Columns).
-  
-
-
 
 /* parse_selectors(+Table(s),+Selector(s), -ParsedSelectors) 
  * @Table(s)       : can be list of tables or single table
@@ -264,9 +289,6 @@ get_full_cols([HTable|TTable], RawColumns, Columns) :-
 parse_selectors([],Selectors, ParsedSelectors) :-
   % We emptied the table list and we flatten it 
   !,flatten(Selectors, ParsedSelectors).
-
-% Absorb case
-parse_selectors([_|_], [], _).
 
 %Working case, end of table list and multiselect
 parse_selectors([Htable|_], [HSelector|TSelector], ParsedSelectors) :-
@@ -315,7 +337,7 @@ selec_worker(Table, Selectors, Conds, Projection) :-
     -> % Multi-tables selection
       maplist(cols, Table, TempColumns),
       flatten(TempColumns,Columns),           % Get all viewed columns
-      maplist(row, Table,TempRow), % X-join the tables
+      maplist(row, Table,TempRow),            % X-join the tables
       flatten(TempRow, Row)                   % Get the rows
     ; % Single-table selection
       table(Table, RawColumns,_),
