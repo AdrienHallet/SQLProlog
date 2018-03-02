@@ -381,60 +381,89 @@ selec_worker(Table, Selectors, Conds, Projection) :-
  */
 condition_loop([], _, _).   % base case
 condition_loop([H|T], Columns, Row) :-
-  (First, Remain) = H,
+  (First, Remain) = H, %Unwrap contiguous conditions
   condition_loop([First,Remain], Columns, Row);
 
-  %H=..CondList, % Transform the condition into a uniform representation
-  build_tree(H, Columns, Row, Tree),
-  evaluate_tree(Tree,[], Condition),
-  FunCondition=..Condition,
-  !,FunCondition,
-  %!,Condition, % Check the condition
+  build_tree(H, Columns, Row, Tree), %Build the condition tree
+  evaluate_tree(Tree,[], Condition), %Parse the condition tree
+  FunCondition=..Condition,          %Create condition from tree
+  !,FunCondition,                    %check condition
   condition_loop(T, Columns, Row). % Condition is valid, goto next condition
 
+/* build_tree(+FullCond, +Columns, +Row, -Tree)
+ * Build a linear tree in @Tree from the @FullCond on @Columns
+ * and @Row
+ * > Helper method for condition_loop to create the tree
+ */
 build_tree(FullCond, Columns, Row, Tree) :-
   FullCond=..CondList,
   get_atomic(CondList, [], R),
   replace_by_atom(R, Columns, Row, [], Tree).
 
+/* evaluate_tree(ToEval, Stock, FinalCondition)
+ * @ToEval         : !MUST! be a linear tree formed with build_tree
+ * @Stock          : !MUST! be a linear tree formed with build_tree
+ * @FinalCondition : The final condition to check
+ *
+ * Evaluate a linear tree formed with build_tree.
+ * You can call it either by putting everythink in ToEval or Stock,
+ * Or by splitting them, no one cares, the predicate is smart enough
+ * and will figure itself what to do.
+ */
 evaluate_tree(ToEval, Stock, FinalCondition) :-
-  length(ToEval, 3),
-  (length(Stock,0)
-  -> ToEval = FinalCondition
-  ;
-  !, Condition=..ToEval,
-  !, append(Stock, [Condition], NewTree),
-  !, evaluate_tree(NewTree, [], FinalCondition)
+  length(ToEval, 3),                            %If we can functorize
+  (length(Stock,0)                              %And tree is empty
+  -> ToEval = FinalCondition                    %We have our final expression
+  ;                                             %But if tree was not empty
+  !, Condition=..ToEval,                        %Evaluate current expression
+  !, append(Stock, [Condition], NewTree),       %And put it with the stock
+  !, evaluate_tree(NewTree, [], FinalCondition) %For next expression
   );
   
-  length(ToEval, N),
-  !,N > 2,
-  !,ToEval=[H|T],
-  !,append(Stock, [H], NewStock),
-  !,evaluate_tree(T, NewStock, FinalCondition).
+  length(ToEval, N),                            %We do not have a 3-tuple
+  !,N > 2,                                      %Make sure we don't unwrap too much
+  !,ToEval=[H|T],                               %Unwrap the expression
+  !,append(Stock, [H], NewStock),               %Put the rest in stock
+  !,evaluate_tree(T, NewStock, FinalCondition). %Try to evaluate again
     
-replace_by_atom([], _, _, Builder, Replaced):-
-  Replaced = Builder.
+
+/* replace_by_atom(+RawLinearTree, Columns, Row, [], Replaced)
+ * With @Columns containing the selection columns and 
+ * @Row the current Row, replace each non-atomic value
+ * by the correct atomic value in @Row and put the result
+ * in @Replaced.
+ * Helper method for build_tree
+ */
+replace_by_atom([], _, _, Builder, Replaced):- %Base case, work has ended
+  Replaced = Builder.                          %Return the value
 replace_by_atom([H|T], Columns, Row, Builder, Replaced):-
-  atomic(H),
+  atomic(H),                                   %Already an atom
   !, append(Builder, [H], Result),
   !, replace_by_atom(T, Columns, Row, Result, Replaced);
   
-  !, nth0(ColumnIndex, Columns, H),
+  nth0(ColumnIndex, Columns, H),               %Replace column name by value
   !, nth0(ColumnIndex, Row, Atom),
   !, append(Builder, [Atom], Result),
+  !, replace_by_atom(T, Columns, Row, Result, Replaced);
+  
+  !,is_list(H),                                %If neither atom nor column
+  !, append(Builder, [H], Result),             %Then must be list for predicate
   !, replace_by_atom(T, Columns, Row, Result, Replaced).
   
 /* get_atomic(+RawList, [], -Atomized)
  * 
- * 
- *
+ * helper method for the linear tree to
+ * format the atoms in @RawList into
+ * a usable list in @Atomized.
+ * Only replace non-expression atoms
+ * (to replace expression atoms, see
+ * "replace_by_atom" above)
  */
-get_atomic([], Builder, Atomized):-
-    Atomized = Builder.
-get_atomic([H|T], Builder, Atomized) :-
-  (atomic(H);H= +X;H=_/_),
-  (H = +X
+get_atomic([], Builder, Atomized):- %Base case, list is now empty
+    Atomized = Builder.             %We have our answer
+get_atomic([H|T], Builder, Atomized) :- %Worker case, list not empty
+  (atomic(H);H= +X;H=_/_;is_list(H)), %H is of the type we're looking for
+  (H = +X                             %Remove the plus notation
     -> Add=_/X
     ; Add=H
   ),
@@ -442,7 +471,7 @@ get_atomic([H|T], Builder, Atomized) :-
   !,get_atomic(T, Result, Atomized);
   
   !, 
-  H=..Functor,
+  H=..Functor,                        %We could do nothing, must be a functor
   !, get_atomic(Functor, Builder, Atomized).
   
 /* selector(+Columns, +ColumnsKept, +Row, -Builder, -Projection)
