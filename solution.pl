@@ -373,11 +373,6 @@ selec_worker(Table, Selectors, Conds, Projection) :-
  * The condition_loop loops over every handed condition, binding
  * the values found on desired column and comparing it to the
  * expected value according to the given operator.
- *
- * There is a special case when we give two columns (e.g. to join on
- * a multi-table selection), the compared columns are both evaluated
- * on their value found on Row (where the classis condition keeps a
- * constant for the comparison).
  */
 condition_loop([], _, _).   % base case
 condition_loop([H|T], Columns, Row) :-
